@@ -27,9 +27,9 @@ export interface OCRBlock {
 }
 
 // マッピングされたフィールドの型定義
-export interface MappedFields {
+export type MappedFields = {
   [key in FieldKey]?: string;
-}
+};
 
 // フィールド定義
 const fieldDefinitions: { key: FieldKey; label: string; description: string }[] = [
