@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { OCRResponse } from "@mistralai/mistralai/src/models/components/ocrresponse.js";
+import PresetManager from "./PresetManager";
+import AutoMappingControl from "./AutoMappingControl";
+import ExcelPreview from "./ExcelPreview";
+import "../styles/excelPreview.css";
 
 // フィールドキーの型定義
 export type FieldKey =
@@ -58,6 +62,8 @@ export default function OcrEditor({ ocrResult, onSave, isLoading = false }: OcrE
   const [selectedBlockIds, setSelectedBlockIds] = useState<number[]>([]);
   // マッピング結果のプレビュー
   const [mappedFieldsPreview, setMappedFieldsPreview] = useState<MappedFields>({});
+  // Excelプレビューの表示状態
+  const [showExcelPreview, setShowExcelPreview] = useState(false);
 
   // OCR結果からブロックを抽出
   useEffect(() => {
@@ -181,6 +187,43 @@ export default function OcrEditor({ ocrResult, onSave, isLoading = false }: OcrE
     setSelectedBlockIds([]);
   };
 
+  // プリセットを適用するハンドラ
+  const handleApplyPreset = (mappings: { [blockId: number]: FieldKey }) => {
+    // 現在のブロックIDに合わせてマッピングを調整
+    const currentBlockIds = blocks.map(block => block.id);
+    const adjustedMappings: { [blockId: number]: FieldKey } = {};
+    
+    // プリセットのマッピングを現在のブロックに適用
+    // 注: ブロックIDが一致しない場合は、順番に割り当てる簡易的な方法
+    const presetBlockIds = Object.keys(mappings).map(id => parseInt(id));
+    
+    if (currentBlockIds.length > 0 && presetBlockIds.length > 0) {
+      // 現在のブロック数とプリセットのマッピング数の小さい方まで適用
+      const minLength = Math.min(currentBlockIds.length, presetBlockIds.length);
+      
+      for (let i = 0; i < minLength; i++) {
+        const presetBlockId = presetBlockIds[i];
+        const currentBlockId = currentBlockIds[i];
+        adjustedMappings[currentBlockId] = mappings[presetBlockId];
+      }
+      
+      setSelectedFields(adjustedMappings);
+    }
+  };
+
+  // 自動マッピングを適用するハンドラ
+  const handleApplyAutoMapping = (mappings: { [blockId: number]: FieldKey }) => {
+    setSelectedFields(prev => ({
+      ...prev,
+      ...mappings
+    }));
+  };
+
+  // Excelプレビューの表示/非表示を切り替え
+  const toggleExcelPreview = () => {
+    setShowExcelPreview(!showExcelPreview);
+  };
+
   // マッピング結果を保存するハンドラ
   const handleSave = () => {
     onSave(mappedFieldsPreview);
@@ -231,9 +274,21 @@ export default function OcrEditor({ ocrResult, onSave, isLoading = false }: OcrE
     <div className="flex flex-col h-full">
       <div className="bg-white p-4 border-b">
         <h2 className="text-xl font-semibold mb-2">OCR結果のマッピング</h2>
-        <p className="text-gray-600">
+        <p className="text-gray-600 mb-4">
           各テキスト行を適切なフィールドに割り当ててください。複数行を選択して結合することもできます。
         </p>
+        
+        {/* 自動マッピングコントロール */}
+        <AutoMappingControl 
+          blocks={blocks} 
+          onApplyMappings={handleApplyAutoMapping} 
+        />
+        
+        {/* プリセットマネージャー */}
+        <PresetManager 
+          currentMappings={selectedFields} 
+          onApplyPreset={handleApplyPreset} 
+        />
         
         {/* 複数選択時の結合ツール */}
         {selectedBlockIds.length >= 2 && (
@@ -312,24 +367,42 @@ export default function OcrEditor({ ocrResult, onSave, isLoading = false }: OcrE
 
       {/* マッピング結果プレビュー */}
       <div className="bg-gray-50 p-4 border-t">
-        <h3 className="font-semibold mb-2">マッピング結果プレビュー</h3>
-        <div className="bg-white p-3 rounded-md border max-h-48 overflow-auto">
-          {Object.keys(mappedFieldsPreview).length > 0 ? (
-            <div className="space-y-2">
-              {Object.entries(mappedFieldsPreview).map(([fieldKey, text]) => {
-                const fieldDef = fieldDefinitions.find(f => f.key === fieldKey as FieldKey);
-                return (
-                  <div key={fieldKey} className="flex flex-col">
-                    <span className="font-medium">{fieldDef?.label || fieldKey}:</span>
-                    <span className="text-gray-700 whitespace-pre-line">{text}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-gray-500">フィールドが選択されていません</p>
-          )}
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-semibold">マッピング結果プレビュー</h3>
+          <button
+            onClick={toggleExcelPreview}
+            className="text-sm text-blue-600 hover:text-blue-800"
+            disabled={Object.keys(mappedFieldsPreview).length === 0}
+          >
+            {showExcelPreview ? "Excelプレビューを隠す" : "Excelプレビューを表示"}
+          </button>
         </div>
+
+        {/* 通常のマッピング結果プレビュー */}
+        {!showExcelPreview && (
+          <div className="bg-white p-3 rounded-md border max-h-48 overflow-auto">
+            {Object.keys(mappedFieldsPreview).length > 0 ? (
+              <div className="space-y-2">
+                {Object.entries(mappedFieldsPreview).map(([fieldKey, text]) => {
+                  const fieldDef = fieldDefinitions.find(f => f.key === fieldKey as FieldKey);
+                  return (
+                    <div key={fieldKey} className="flex flex-col">
+                      <span className="font-medium">{fieldDef?.label || fieldKey}:</span>
+                      <span className="text-gray-700 whitespace-pre-line">{text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-gray-500">フィールドが選択されていません</p>
+            )}
+          </div>
+        )}
+
+        {/* Excelプレビュー */}
+        {showExcelPreview && Object.keys(mappedFieldsPreview).length > 0 && (
+          <ExcelPreview mappedFields={mappedFieldsPreview} />
+        )}
       </div>
 
       {/* アクションボタン */}
